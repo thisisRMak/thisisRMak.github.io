@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bias–Variance in 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.32.0/plotly.min.js"></script>
+<style>
+  :root{
+    --ink:#1a1a1a;
+    --paper:#fbfaf7;
+    --line:#d9d4c8;
+    --bias:#1f6feb;   /* blue    */
+    --var:#d6336c;    /* magenta */
+    --bv:#0c8599;     /* teal    */
+    --train:#6741d9;  /* violet  */
+    --gen:#2f9e44;    /* green   */
+    --muted:#6b6660;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 22px 40px}
+  .eyebrow{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  h1{font-size:30px;line-height:1.15;margin:0 0 10px;font-weight:600}
+  .sub{font-size:16px;color:var(--muted);margin:0 0 18px;max-width:64ch;line-height:1.5}
+  #plot{width:100%;height:600px}
+
+  .panel{margin-top:14px}
+  .panel h2{font-size:12px;font-family:ui-monospace,monospace;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  .pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;
+    border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:7px 13px 7px 10px;border-radius:999px;cursor:pointer;transition:.15s}
+  .pill:hover{border-color:#a8a194}
+  .pill.on{border-color:var(--ink)}
+  .pill:focus-visible{outline:2px solid var(--bias);outline-offset:2px}
+  .box{width:13px;height:13px;border:1.5px solid #b7b0a2;border-radius:3px;
+    display:inline-block;position:relative;margin-right:8px;transition:.12s}
+  .pill.on .box{background:var(--ink);border-color:var(--ink)}
+  .pill.on .box::after{content:"";position:absolute;left:3.5px;top:1px;width:3.5px;height:7px;
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+  .util{margin-left:2px;display:flex;gap:14px;align-items:center;margin-top:12px}
+  .util a{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);
+    cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .util a:hover{color:var(--ink)}
+
+  .read{margin-top:26px;border-top:1px solid var(--line);padding-top:18px;
+    font-size:15px;line-height:1.6;max-width:74ch}
+  .read h2{font-size:13px;font-family:ui-monospace,monospace;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  dl{margin:0}
+  dt{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:13.5px;font-weight:600;
+    display:flex;align-items:center;gap:8px;margin:16px 0 3px}
+  dt:first-child{margin-top:0}
+  dt .dot{margin-right:0}
+  dd{margin:0 0 0 18px;color:#33302b}
+  code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:13px;
+    background:#f0ece2;padding:1px 5px;border-radius:4px}
+  .close{margin-top:20px;padding-top:14px;border-top:1px dashed var(--line);
+    font-size:14.5px;color:var(--muted);line-height:1.6}
+  footer{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;
+    color:var(--muted);line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">CS229 · Learning theory</p>
+  <h1>Visualizing Error vs Model Complexity and Training-set together</h1>
+  <p class="sub">We saw 2D plots in CS229 Lecture3, for Bias-Variance interplay with Model Complexity, 
+    and Training vs. Generalization interplay with Training set-size. 
+    I wanted to visualize these two separate plots together to gain better intuition. 
+    Thanks to Claude's work below, we see an interesting asymmetry in the Bias and Variance manifolds. </p>
+  <p class="sub"> Tick any combination of surfaces below. Drag the plot to rotate. Specifically, compare how 
+    Bias and Variance differ. Bias and Training error seem to go hand-in-hand. Bias² and Variance together 
+    appear to track generalization error</p>
+
+  <div id="plot"></div>
+
+  <div class="panel">
+    <h2>Show surfaces</h2>
+    <div class="pills" id="pills">
+      <button class="pill on" data-atoms="B"><span class="box"></span><span class="dot" style="background:var(--bias)"></span>Bias²</button>
+      <button class="pill on" data-atoms="V"><span class="box"></span><span class="dot" style="background:var(--var)"></span>Variance</button>
+      <button class="pill" data-atoms="BV"><span class="box"></span><span class="dot" style="background:var(--bv)"></span>Bias² + Variance</button>
+      <button class="pill" data-atoms="Tr"><span class="box"></span><span class="dot" style="background:var(--train)"></span>Training error</button>
+      <button class="pill on" data-atoms="Ge"><span class="box"></span><span class="dot" style="background:var(--gen)"></span>Generalization error</button>
+    </div>
+    <div class="util">
+      <a id="allBtn">select all</a><a id="noneBtn">clear</a><a id="coreBtn">reset to bias / var / generalization</a>
+    </div>
+  </div>
+
+  <div class="read">
+    <h2>What each surface means</h2>
+    <dl>
+      <dt><span class="dot" style="background:var(--bias)"></span>Bias²</dt>
+      <dd>The error left over because the model class is too simple to represent the true function — the
+      <i>approximation error</i>. Formula: <code>bias²(c) = a·e^(−α(c−1))</code>. It falls as complexity
+      <code>c</code> grows, and it's <b>flat along the n-axis</b>: adding data can't fix a model class
+      that fundamentally can't express the target.</dd>
+
+      <dt><span class="dot" style="background:var(--var)"></span>Variance</dt>
+      <dd>How much the fitted model swings from one training sample to another — its sensitivity to the
+      particular data it saw. Formula: <code>variance(c, n) = b·c / n</code>. It <b>rises</b> with
+      complexity (flexible models chase noise) and <b>shrinks</b> as <code>n</code> grows (more data
+      steadies the fit).</dd>
+
+      <dt><span class="dot" style="background:var(--bv)"></span>Bias² + Variance</dt>
+      <dd>The <i>reducible error</i> — everything you could remove with a better-chosen model or more
+      data. It's the generalization error with the irreducible noise <code>σ²</code> subtracted off, so
+      it sits just below the green surface.</dd>
+
+      <dt><span class="dot" style="background:var(--train)"></span>Training error</dt>
+      <dd>Error measured on the exact data the model was fit to. It's <b>optimistic</b> — biased low —
+      because the model has already adapted to those points. Formula:
+      <code>(σ² + bias²)·n/(n+κc)</code>. With little data a flexible model nearly interpolates
+      (≈ 0, front-left); as <code>n</code> grows it climbs toward the plateau <code>σ² + bias²</code>.
+      The height from here up to the green surface is the <b>generalization gap</b>, which tracks the
+      variance.</dd>
+
+      <dt><span class="dot" style="background:var(--gen)"></span>Generalization error</dt>
+      <dd>Expected error on <i>unseen</i> data drawn from the true distribution — what you actually care
+      about. Formula: <code>σ² + bias²(c) + variance(c, n)</code>. This is exactly what a held-out
+      <i>test set</i> estimates, which is why "test error" and "generalization error" name the same
+      quantity. It's the valley whose floor drops — and whose lowest point drifts toward higher
+      complexity — as data grows.</dd>
+    </dl>
+
+    <p class="close">The two flat CS229 plots are slices of this: fix <code>n</code> and cut across
+    complexity to get the U-shaped bias–variance tradeoff; follow the valley floor as <code>n</code>
+    grows to get the learning curve.</p>
+  </div>
+
+  <footer>Generated with Claude. Surfaces are illustrative — chosen so the shapes read clearly, not fit to real data.</footer>
+</div>
+
+<script>
+(function(){
+  const alpha=0.45, a=2.0, b=3.0, noise=0.10, kappa=8.0;
+  const cMin=1, cMax=12, nMin=15, nMax=200, cN=48, nN=48;
+
+  const cArr=[], nArr=[];
+  for(let j=0;j<cN;j++) cArr.push(cMin+(cMax-cMin)*j/(cN-1));
+  for(let i=0;i<nN;i++) nArr.push(nMin+(nMax-nMin)*i/(nN-1));
+
+  const bias2 = c => a*Math.exp(-alpha*(c-1));
+  const varf  = (c,n) => b*c/n;
+
+  const Zb=[],Zv=[],Zbv=[],Ztr=[],Zge=[];
+  for(let i=0;i<nN;i++){
+    const n=nArr[i], rb=[],rv=[],rbv=[],rtr=[],rge=[];
+    for(let j=0;j<cN;j++){
+      const c=cArr[j], B=bias2(c), V=varf(c,n), plat=noise+B;
+      rb.push(B); rv.push(V); rbv.push(B+V);
+      rtr.push(plat*n/(n+kappa*c)); rge.push(noise+B+V);
+    }
+    Zb.push(rb);Zv.push(rv);Zbv.push(rbv);Ztr.push(rtr);Zge.push(rge);
+  }
+
+  const common={type:'surface',x:cArr,y:nArr,showscale:false,
+    contours:{z:{show:true,usecolormap:false,color:'rgba(0,0,0,.16)',width:1}}};
+  const mk=(z,scale,op,vis)=>Object.assign({},common,{z,colorscale:scale,opacity:op,visible:vis});
+
+  // trace order: [B, V, BV, Tr, Ge]
+  const data=[
+    mk(Zb ,[[0,'#bcd3f7'],[1,'#1f6feb']],0.9 ,true ),
+    mk(Zv ,[[0,'#f6c2d6'],[1,'#d6336c']],0.82,true ),
+    mk(Zbv,[[0,'#b3e0e8'],[1,'#0c8599']],0.7 ,false),
+    mk(Ztr,[[0,'#d0bfff'],[1,'#6741d9']],0.88,false),
+    mk(Zge,[[0,'#bfe4c6'],[1,'#2f9e44']],0.5 ,true )
+  ];
+
+  const axis=(t,bg,rng)=>({title:t,range:rng,backgroundcolor:bg,gridcolor:'#ded8cb',
+    zerolinecolor:'#ded8cb',showbackground:true,titlefont:{size:13}});
+  const layout={paper_bgcolor:'rgba(0,0,0,0)',margin:{l:0,r:0,t:0,b:0},
+    scene:{
+      xaxis:axis('Model complexity  c →','#f3efe6',[cMin,cMax]),
+      yaxis:axis('Training-set size  n →','#f3efe6',[nMin,nMax]),
+      zaxis:axis('Error','#faf7f0',[0,2.6]),
+      camera:{eye:{x:1.75,y:-1.6,z:0.85}},
+      aspectratio:{x:1,y:1,z:0.62}
+    }};
+  Plotly.newPlot('plot',data,layout,{displayModeBar:false,responsive:true});
+
+  const pills=[...document.querySelectorAll('#pills .pill')];
+  function refresh(){
+    const on={B:false,V:false,BV:false,Tr:false,Ge:false};
+    pills.forEach(p=>{ if(p.classList.contains('on')) on[p.dataset.atoms]=true; });
+    Plotly.restyle('plot',{visible:[on.B,on.V,on.BV,on.Tr,on.Ge]},[0,1,2,3,4]);
+  }
+  pills.forEach(p=>p.addEventListener('click',()=>{p.classList.toggle('on');refresh();}));
+  const set=(pred)=>{pills.forEach(p=>p.classList.toggle('on',pred(p)));refresh();};
+  document.getElementById('allBtn').onclick =()=>set(()=>true);
+  document.getElementById('noneBtn').onclick=()=>set(()=>false);
+  document.getElementById('coreBtn').onclick=()=>set(p=>['B','V','Ge'].includes(p.dataset.atoms));
+})();
+</script>
+</body>
+</html>
